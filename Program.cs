@@ -3,6 +3,7 @@
 var source = Enumerable.Range(0, 1000).ToArray();
 Console.WriteLine(Enumerable.Select(source, i => i * 2).Sum());
 Console.WriteLine(Select(source, i => i * 2).Sum());
+Console.WriteLine(SelectManual(source, i => i * 2).Sum());
 
 
 static IEnumerable<TResult> Select<TSource,TResult>(IEnumerable<TSource> source, Func<TSource,TResult> selector)
@@ -53,6 +54,9 @@ sealed class Enumrator<TSource, TResult> : IEnumerator<TResult>
     private IEnumerable<TSource> _source;
     private Func<TSource,TResult> _selector;
     private TResult _current = default!;
+    private IEnumerator<TSource>? _enumrator;
+    //Move next hasn't beencalledyet
+    private EnumratorState _state = EnumratorState.Begining;
 
      public Enumrator(IEnumerable<TSource> source, Func<TSource,TResult> selector)
     {
@@ -66,28 +70,35 @@ sealed class Enumrator<TSource, TResult> : IEnumerator<TResult>
 
     public void Dispose()
     {
+        _state = EnumratorState.Ended;
+        _enumrator?.Dispose();
     }
 
     public bool MoveNext()
     {
-        using var enumrator = _source.GetEnumerator();
-        try
+        if(_state is EnumratorState.Begining)
         {
-            if(enumrator.MoveNext())
+            _enumrator = _source.GetEnumerator();
+            _state = EnumratorState.Iterating;
+        }
+
+        if(_state is EnumratorState.Iterating)
+        {
+            try
             {
-                _current = _selector.Invoke(enumrator.Current);
-                return true;
+                if(_enumrator!.MoveNext())
+                {
+                    _current = _selector.Invoke(_enumrator.Current);
+                    return true;
+                }
+            }
+            catch
+            {
+                Dispose();
+                throw;
             }
         }
-        catch
-        {
-            enumrator.Dispose();
-            throw;
-        }
-        finally
-        {
-            enumrator.Dispose();
-        }
+        Dispose();
         return false;
     }
 
@@ -95,4 +106,11 @@ sealed class Enumrator<TSource, TResult> : IEnumerator<TResult>
     {
         throw new NotSupportedException();
     }
+}
+
+public enum EnumratorState
+{
+    Begining,
+    Iterating,
+    Ended
 }
